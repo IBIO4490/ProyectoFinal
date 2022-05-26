@@ -22,9 +22,35 @@ import scipy.io
 from skimage import io
 from tqdm import tqdm
 import pickle
+
+## correccion:
+#globis a short_finned_pilot_whale
+#pilot_whale a short_finned_pilot_whale
+#kiler_whale a killer_whale
+#bottlenose_dolpin a bottlenose_dolphin
+
+def Corregircsv():
+    gt = pd.read_csv(os.path.join("train2.csv"))
+
+    species = gt["species"]
+
+    for i in tqdm(range(len(species))):
+
+        if gt.loc[i,"species"] == "globis":
+            gt.loc[i, "species"] = "short_finned_pilot_whale"
+        elif gt.loc[i,"species"] == "pilot_whale":
+            gt.loc[i, "species"] = "short_finned_pilot_whale"
+        elif gt.loc[i,"species"] == "kiler_whale":
+            gt.loc[i, "species"] = "killer_whale"
+        elif gt.loc[i,"species"] == "bottlenose_dolpin":
+            gt.loc[i, "species"] = "bottlenose_dolphin"
+
+
+    gt.to_csv("train2.csv", index = False)
+Corregircsv()
 ##
 def ContarImgPorClase():
-    gt = pd.read_csv(os.path.join("train2.csv"))
+    gt = pd.read_csv(os.path.join("fold1.csv"))
     dicc = {}
     especie = gt["species"]
 
@@ -36,6 +62,7 @@ def ContarImgPorClase():
             dicc[str(i)] = 0
             dicc[str(i)] += 1
     return dicc
+ContarImgPorClase()
 ## para ahcer la divison de las iamgenes, correr una vez solo
 def Division():
 
@@ -69,7 +96,7 @@ def Division():
 ##
 
 def diccionario():
-    gt = pd.read_csv(os.path.join("train2 (con especies originales).csv"))
+    gt = pd.read_csv(os.path.join("train2.csv"))
     species = gt["species"]
     dicc = {}
     contador = 0
@@ -85,11 +112,12 @@ pickle_out = open("dicc_clases.pkl", "wb")
 pickle.dump(diccionario,pickle_out)
 pickle_out.close()
 diccionario1 = pickle.load(open("dicc_clases.pkl","rb"))
+
 ## cambiar la clase por un numero de acuerdo al diccionario
 
 def modificarcsv():
     gt = pd.read_csv(os.path.join("train2.csv"))
-    dicc = diccionario()
+    dicc = diccionario1
 
     species = gt["species"]
 
@@ -98,7 +126,7 @@ def modificarcsv():
         gt.loc[i,"species"] = NewValue
 
     gt.to_csv("train2.csv", index = False)
-
+modificarcsv()
 ## crear los nuevos csv de ambos folds a partir del original
 def CrearCSV(fold):
     gt = pd.read_csv(os.path.join("train2.csv"))
@@ -121,7 +149,7 @@ def CrearCSV(fold):
     df.to_csv(fold+".csv", index=False)
 
 
-# CrearCSV("fold2")
+CrearCSV("fold1")
 # ##
 # gt = pd.read_csv(os.path.join("train2.csv"))
 # #gt = gt.drop(0)

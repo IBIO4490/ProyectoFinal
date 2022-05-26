@@ -15,8 +15,11 @@ from cnvrg import Experiment
 from sklearn.metrics import classification_report
 
 ##
-model = torchvision.models.efficientnet_b7(pretrained=True)
-model.classifier[1] = nn.Linear(2560,30)
+model = torchvision.models.resnet50(pretrained=True)
+print(model)
+##
+model.fc = nn.Linear(2048,30)
+print(model)
 ##
 #Load data
 my_transform = transforms.Compose([
