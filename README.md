@@ -1,7 +1,7 @@
 # ProyectoFinal
 * For Classification and Photo-ID you must have the folder data and data1 respectively, and their annotation files which are fold1.csv and fold2.csv for classfication
 and test.csv,val.csv, train.csv, fold1ID.csv and fold2ID.csv for photo-ID. These are in the user Sojedaa/ProyectoFinal. All these aren't uploaded to the repository 
-  as indicated in the instructions that the dataset will be taken from our users.
+  as indicated in the instructions that the dataset will be taken from our users. The diccionaries named dicc_clases.pkl and dicc_id.pkl are important for the testing of the models so you can know exactly the species.
   
 # Classification
 *  You must pip install the last version of torchvision (0.12.0), 
