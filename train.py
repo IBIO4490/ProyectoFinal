@@ -11,118 +11,121 @@ import os
 import dataproc
 import numpy as np
 import pickle
-from cnvrg import Experiment
+import time
 from sklearn.metrics import classification_report
 
+
+
 ##
-model = torchvision.models.resnet50(pretrained=True)
+model = torchvision.models.resnet50(pretrained=False)
 print(model)
 ##
-model.fc = nn.Linear(2048,30)
+model.fc = nn.Linear(2048,26)
 print(model)
+
+pretrained_dict = torch.load(os.path.join("ResNet50_Adam_lr1e-4Decay5_wd2e-4_Fold1.pth"))
+model_dict = model.state_dict()
+model_dict.update(pretrained_dict)
+model.load_state_dict(model_dict)
+
+
 ##
 #Load data
-my_transform = transforms.Compose([
+
+mean2 = [0.4124,0.4564,0.5065]
+std2 = [0.2245,0.2230,0.2336]
+
+my_transform_fold2 = transforms.Compose([
     transforms.ToPILImage(),
     transforms.ToTensor(),
-    #transforms.Normalize(mean = [], std=[])
+    #x
+    transforms.RandomHorizontalFlip(p = 0.5),
+    transforms.Normalize(mean = [0.4124,0.4564,0.5065], std=[0.2245,0.2230,0.2336])
 ])
-'''transforms.RandomCrop((500,500)),
-    transforms.RandomHorizontalFlip(p = 0.5),'''
 
-train_dataset = HappyWhalesDataset(csv_file= "fold1.csv", root_dir=str(os.path.join("data","fold1")),transform=my_transform )
-test_dataset = HappyWhalesDataset(csv_file= "fold2.csv", root_dir=str(os.path.join("data","fold2")),transform=my_transform )
+mean1 = [0.4108,0.4552,0.5053]
+std1 = [0.2241,0.2227,0.2335]
 
-train_loader = DataLoader(train_dataset, batch_size= 25541, shuffle = True)
-test_loader = DataLoader(test_dataset, batch_size= 25492, shuffle = True)
-##
-data_fold1 = next(iter(train_loader))
-media_fold1, desviacion_fold1 = data_fold1[0].mean(),data_fold1[0].std()
-print("Fold1:")
-print(media_fold1, desviacion_fold1)
 
-data_fold2 = next(iter(test_loader))
-media_fold2, desviacion_fold2 = data_fold2[0].mean(),data_fold2[0].std()
-print("Fold2:")
-print(media_fold2, desviacion_fold2)
+my_transform_fold1 = transforms.Compose([
+    transforms.ToPILImage(),
+    transforms.ToTensor(),
+    #transforms.Resize(256),
+    transforms.RandomHorizontalFlip(p = 0.5),
+    transforms.Normalize(mean1, std1)
+])
 
+train_dataset = HappyWhalesDataset(csv_file= "fold1.csv", root_dir=str(os.path.join("data","fold1")),transform=my_transform_fold1)
+train_loader = DataLoader(train_dataset, batch_size= 5,shuffle= True)
 
 ##
-def train(log_interval, model, device, train_loader, epoch,lr, weightdecay, model_name):
+
+'''def mean_std1(dataset,batch):
+    loader = DataLoader(dataset, batch_size=batch)
+    num_pixels = len(dataset)*512*512
+
+    total_sum_R = 0
+    total_sum_G = 0
+    total_sum_B = 0
+    for batch in loader: total_sum_R+= batch[0][:,0,:,:].cuda(1).sum(); total_sum_G+= batch[0][:,1,:,:].cuda(1).sum();total_sum_B+= batch[0][:,2,:,:].cuda(1).sum()
+
+    meanR = total_sum_R/num_pixels
+    meanG = total_sum_G/num_pixels
+    meanB = total_sum_B/num_pixels
+
+    sum_square_error_R = 0
+    sum_square_error_G = 0
+    sum_square_error_B = 0
+    
+    for batch in loader: sum_square_error_R+= ((batch[0][:,0,:,:].cuda(1)-meanR).pow(2)).sum(); sum_square_error_G+= ((batch[0][:,1,:,:].cuda(1)-meanG).pow(2)).sum(); sum_square_error_B+= ((batch[0][:,2,:,:].cuda(1)-meanB).pow(2)).sum()
+    stdR= torch.sqrt(sum_square_error_R/num_pixels)
+    stdG= torch.sqrt(sum_square_error_G/num_pixels)
+    stdB= torch.sqrt(sum_square_error_B/num_pixels)
+
+    mean = (meanR,meanG,meanB)
+    std = (stdR,stdG,stdB)
+
+    return mean, std'''
+
+#print(mean_std1(train_dataset,1000))
+#print(mean_std1(test_dataset,1000))
+
+##
+def train(log_interval, model, gpuID, train_loader, epoch,lr, weightdecay, model_name, scheduler = True):
     model.train()
+    model.cuda(gpuID)
     optimizer = torch.optim.Adam(model.parameters(), lr, weight_decay= weightdecay)
+    #optimizer = torch.optim.ASGD(model.parameters(), lr, weight_decay= weightdecay)
+    #optimizer = torch.optim.SGD(model.parameters(), lr, weight_decay= weightdecay)
     criterion = torch.nn.CrossEntropyLoss()
-    e = Experiment()
-    for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
-
-        optimizer.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
-        loss.backward()
-        optimizer.step()
-
-        if (batch_idx+1) % log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                1.   * batch_idx / len(train_loader), loss.item()))
-            e.log_metric("loss", Ys=[loss.item()])
-        torch.save(model.state_dict(),str(model_name+".pth"))
+    timeformat = '%Y-%m-%d %H:%M:%S'
+    #e = Experiment()
+    for epoc in range(epoch):
 
 
-def Test(model,test_dataloader, gpuID):
-    device = torch.device("cuda:"+gpuID if torch.cuda.is_available() else "cpu")
-    net = model.to(device) # this will bring the network to GPU if DEVICE is cuda
-    net.eval() # Set Network to evaluation mode
+        for batch_idx, (data, target) in enumerate(train_loader):
+            data, target = data.cuda(gpuID), target.cuda(gpuID)
 
-    dicc = pickle.load(open("dicc_clases.pkl","rb"))
-    keys = list(dicc.keys())
+            optimizer.zero_grad()
+            output = model(data)
+            loss = criterion(output, target)
+            loss.backward()
+            
+            optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
+            timestr = time.strftime(timeformat, time.localtime())
+            if (batch_idx+1) % log_interval == 0:
+                print('{} Train Epoch: {}/{} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(timestr,epoc,
+                    epoch, batch_idx * len(data), len(train_loader.dataset),
+                    1.   * batch_idx / len(train_loader), loss.item()))
+                #e.log_metric("loss", Ys=[loss.item()])
+            torch.save(model.state_dict(),str(model_name+".pth"))
 
-    for images, labels in test_dataloader:
-        images = images.to(device)
-        labels = labels.to(device)
-
-  # Forward Pass
-        outputs = net(images)
-
-  # Get predictions
-        _, preds = torch.max(outputs.data, 1)
-
-        preds = list(preds.numpy())
-        labels = list(labels.numpy())
-
-        for clase in keys:
-            for j in range(len(preds)):
-                if dicc[clase] == preds[j]:
-                    preds[j] = str(clase)
-                if dicc[clase] == labels[j]:
-                    labels[j] = str(clase)
-
-
-
-        print(classification_report(labels,preds))
-
-
-
-
-
-
-# def test(model, device, test_loader):
-#     model.eval()
-#     test_loss = 0
-#     correct = 0
-#     with torch.no_grad():
-#         for data, target in test_loader:
-#             data, target = data.to(device), target.to(device)
-#             output = model(data)
-#             test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-#             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-#             correct += pred.eq(target.view_as(pred)).sum().item()
-#
-#     test_loss /= len(test_loader.dataset)
-#
-#     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-#         test_loss, correct, len(test_loader.dataset),
-#         1.   * correct / len(test_loader.dataset)))
-
+lr = 1e-4
+weightdecay = 0.0002
+modelname= "ResNet50_Adam_lr1e-4Decay6_wd2e-4_Fold1"
+optimizer = torch.optim.Adam(model.parameters(), lr, weight_decay= weightdecay)
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+train(10,model,0,train_loader,3,lr,weightdecay,modelname, scheduler)
 

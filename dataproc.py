@@ -11,23 +11,16 @@
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 import numpy as np
-from PIL import Image
+
 import glob
-import random as rd
+
 import shutil
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import scipy.io
+
 from skimage import io
 from tqdm import tqdm
-import pickle
-
-## correccion:
-#globis a short_finned_pilot_whale
-#pilot_whale a short_finned_pilot_whale
-#kiler_whale a killer_whale
-#bottlenose_dolpin a bottlenose_dolphin
 
 def Corregircsv():
     gt = pd.read_csv(os.path.join("train2.csv"))
@@ -47,7 +40,6 @@ def Corregircsv():
 
 
     gt.to_csv("train2.csv", index = False)
-Corregircsv()
 ##
 def ContarImgPorClase():
     gt = pd.read_csv(os.path.join("fold1.csv"))
@@ -62,9 +54,30 @@ def ContarImgPorClase():
             dicc[str(i)] = 0
             dicc[str(i)] += 1
     return dicc
-ContarImgPorClase()
+##
+def ContarImgPorID(csv):
+    gt = pd.read_csv(os.path.join(csv))
+    dicc = {}
+    especie = gt["individual_id"]
+
+    for i in especie:
+        if str(i) in dicc:
+         dicc[str(i)] += 1
+
+        else:
+            dicc[str(i)] = 0
+            dicc[str(i)] += 1
+    return dicc
+##
+def ContadorDeImgPorIndividuo(imgsinf,imgssup):
+    dicc = ContarImgPorID("train2.csv")
+    contador1 = 0
+    for i in range(15587):
+        if dicc[str(i)] >= imgsinf and dicc[str(i)] <= imgssup :
+            contador1+=1
+    print(contador1)
 ## para ahcer la divison de las iamgenes, correr una vez solo
-def Division():
+def Division2folds():
 
     gt = pd.read_csv(os.path.join("train2.csv"))
     image_name = gt["image"]
@@ -93,11 +106,60 @@ def Division():
     for j in range(len(resto)):
         shutil.move(resto[j], os.path.join("data", "fold2"))
 
+## para ahcer la divison de las iamgenes, correr una vez solo 70, 15 ,15
+def DivisionID(csv):
+
+    gt = pd.read_csv(os.path.join("train2.csv"))
+    image_name = gt["image"]
+    id = gt["individual_id"]
+    prevalenciaxid = ContarImgPorID(csv)
+
+    os.mkdir(os.path.join("data", "train"))
+    os.mkdir(os.path.join("data", "val"))
+    os.mkdir(os.path.join("data", "test"))
+
+    # prevalencia vacia
+    contador = {}
+    clases = list(prevalenciaxid.keys())
+    for n in clases:
+        contador[n] = 0
+    listamovidas =[]
+    for index in range(len(image_name)):
+        id_actual = str(id[index])
+
+        if prevalenciaxid[id_actual] != 1:
+            if np.ceil(prevalenciaxid[id_actual] * 0.15) > contador[id_actual]:
+                contador[id_actual] += 1
+                shutil.move(os.path.join("data", str(image_name[index])), os.path.join("data", "val"))
+                listamovidas.append(os.path.join("data", str(image_name[index])))
+
+        '''if np.ceil(prevalenciaxid[id_actual]*0.15) >= contador[id_actual]:
+            contador[id_actual] += 1
+            shutil.move(os.path.join("data",str(image_name[index])), os.path.join("data", "train"))
+            listamovidas.append(os.path.join("data",str(image_name[index])))'''
+
+    for n in clases:
+        contador[n] = 0
+
+    for index in range(len(image_name)):
+        id_actual = str(id[index])
+        if prevalenciaxid[id_actual] != 1:
+            if np.ceil(prevalenciaxid[id_actual]*0.15) > contador[id_actual]:
+                pathimagen = os.path.join("data",str(image_name[index]))
+                if pathimagen not in listamovidas:
+                    contador[id_actual] += 1
+                    shutil.move(os.path.join("data",str(image_name[index])), os.path.join("data", "test"))
+
+
+
+    resto = glob.glob(os.path.join("data","*.jpg"))
+    for j in range(len(resto)):
+        shutil.move(resto[j], os.path.join("data", "train"))
 ##
 
 def diccionario():
     gt = pd.read_csv(os.path.join("train2.csv"))
-    species = gt["species"]
+    species = gt["individual_id"]
     dicc = {}
     contador = 0
     for i in species:
@@ -106,32 +168,25 @@ def diccionario():
             contador += 1
 
     return dicc
-##para guardar el diccionario, se corre una sola vez
-diccionario = diccionario()
-pickle_out = open("dicc_clases.pkl", "wb")
-pickle.dump(diccionario,pickle_out)
-pickle_out.close()
-diccionario1 = pickle.load(open("dicc_clases.pkl","rb"))
-
 ## cambiar la clase por un numero de acuerdo al diccionario
 
 def modificarcsv():
     gt = pd.read_csv(os.path.join("train2.csv"))
-    dicc = diccionario1
+    dicc = diccionario
 
-    species = gt["species"]
+    species = gt["individual_id"]
 
     for i in tqdm(range(len(species))):
         NewValue = dicc[str(species[i])]
-        gt.loc[i,"species"] = NewValue
+        gt.loc[i,"individual_id"] = NewValue
 
     gt.to_csv("train2.csv", index = False)
-modificarcsv()
+
 ## crear los nuevos csv de ambos folds a partir del original
 def CrearCSV(fold):
     gt = pd.read_csv(os.path.join("train2.csv"))
     Nombre = list(gt["image"])
-    lista = glob.glob(os.path.join("data",fold,"*.jpg"))
+    lista = glob.glob(os.path.join("data1",fold,"*.jpg"))
     listaNombres=[]
     ListaIndices = []
     for i in lista:
@@ -147,19 +202,6 @@ def CrearCSV(fold):
     dato = gt.iloc[ListaIndices]
     df = pd.DataFrame(data=dato)
     df.to_csv(fold+".csv", index=False)
-
-
-CrearCSV("fold1")
-# ##
-# gt = pd.read_csv(os.path.join("train2.csv"))
-# #gt = gt.drop(0)
-# print(gt.iloc[[0]])
-# lista = [0,1,2,3,4]
-# dato = gt.iloc[lista]
-# ##
-# df = pd.DataFrame(data = dato)
-# df.append(gt.iloc[[1]], ignore_index = True)
-# print(df)
 ##
 class HappyWhalesDataset(Dataset):
     def __init__(self,csv_file,root_dir, transform= None):
@@ -178,4 +220,3 @@ class HappyWhalesDataset(Dataset):
             image = self.transform(image)
 
         return(image,y_label)
-
